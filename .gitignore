@@ -1,2 +1,6 @@
 # Project exclude paths
 /node_modules/
+.idea
+node_modules
+data
+exports
