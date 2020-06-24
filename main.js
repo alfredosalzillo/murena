@@ -2,6 +2,7 @@ const fs = require('fs');
 const yargs = require('yargs');
 const fg = require('fast-glob');
 const createBrowser = require('./lib/browser');
+const { createEntryRepository, createPackRepository } = require("./lib/dato-ji");
 const {
   search,
   getSearchResults,
@@ -9,10 +10,23 @@ const {
   getCompany,
 } = require("./lib/tripadvisor-adapter");
 
+const wait = (ms) => new Promise((resolve => setTimeout(resolve, ms)));
+
+const datoJiConfig = {
+  token: 'gk5RuW4_p5pSvkSWS-ayWnxAero6WJkX',
+  packId: '2f9b18fb-4cfb-4ea2-95d3-c96f5f1644d5',
+}
+
 const locations = {
+  benevento: 194690,
+  bari: 187874,
   formia: 194765,
   gaeta: 187790,
   rimini: 187807,
+  riccione: 194878,
+  caserta: 194713,
+  napoli: 187785,
+  salerno: 187781,
   roma: 187791,
   genova: 187823,
   alassio: 194663,
@@ -23,6 +37,7 @@ const locations = {
 const argv = yargs
   .command('collect', '')
   .command('export', '')
+  .command('synchronize', '')
   .option('query', {
     alias: 'q',
     description: 'the kind of companies',
@@ -91,6 +106,28 @@ const exportTo = async ({ location, query }) => {
   }
 }
 
+const synchronize = async ({ location, query }) => {
+  const { token, packId } = datoJiConfig;
+  const packRepository = createPackRepository({ token });
+  const entryRepository = createEntryRepository({ token, packId });
+  const files = await fg([`./data/${ query || '*' }-${ location || '*' }.*.json`]);
+  await packRepository.clearOne(packId);
+  for (const file of files) {
+    console.log(`processing ${file}`)
+    const data = JSON.parse(fs.readFileSync(file));
+    const [,ids1, ids2] = await Promise.all([
+      wait(1000 * 60 * 5 / 200),
+      entryRepository.createMany(data.slice(0, 20)),
+      entryRepository.createMany(data.slice(20)),
+    ]);
+    const ids = ids1.concat(ids2);
+    console.log(`ids ${ids.length}`);
+    console.group();
+    ids.forEach(id => console.log(id))
+    console.groupEnd();
+  }
+}
+
 (async () => {
   const [command] = argv._;
   const location = (argv.location || '').trim().toLocaleLowerCase();
@@ -100,6 +137,8 @@ const exportTo = async ({ location, query }) => {
       return collect({ location, query });
     case 'export':
       return exportTo({ location, query });
+    case 'synchronize':
+      return synchronize({ location, query });
   }
   console.log('command not found');
 })();
